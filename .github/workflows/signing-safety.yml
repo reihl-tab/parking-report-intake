@@ -1,0 +1,36 @@
+name: Signing workflow safety
+on:
+  pull_request:
+    paths: ['.github/workflows/manual-gpg-signing.yml', '.github/workflows/signing-safety.yml']
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Validate manual signing boundary without secrets
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          s=Path('.github/workflows/manual-gpg-signing.yml').read_text()
+          assert '  workflow_dispatch:' in s
+          assert '  push:' not in s and '  pull_request:' not in s
+          assert "github.actor == github.repository_owner" in s
+          assert "github.ref == 'refs/heads/main'" in s
+          assert 'git checkout --orphan "$branch"' in s
+          assert 'git commit --allow-empty' in s
+          assert 'git verify-commit HEAD' in s
+          assert 'test -z "$(git ls-tree --name-only HEAD)"' in s
+          assert 'git push origin "HEAD:refs/heads/$branch"' in s
+          assert 'branch="gpg-signing-test/' in s
+          assert 'git merge' not in s and '--force' not in s
+          assert 'git config user.email "$email"' in s
+          start=s.index('        run: |')+len('        run: |\n')
+          end=s.index('      - name: Remove signing material',start)
+          script='\n'.join(x[10:] for x in s[start:end].splitlines())
+          subprocess.run(['bash','-n'],input=script,text=True,check=True)
+          print('Owner-only manual isolated empty signing boundary passed')
+          PY
