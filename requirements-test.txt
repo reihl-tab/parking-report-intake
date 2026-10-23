@@ -1,0 +1,2 @@
+cryptography>=50.0,<51
+Pillow>=12.3,<13
